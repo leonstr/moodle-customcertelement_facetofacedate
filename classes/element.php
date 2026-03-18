@@ -24,7 +24,19 @@
 
 namespace customcertelement_facetofacedate;
 
-defined('MOODLE_INTERNAL') || die();
+use mod_customcert\element\constructable_element_interface;
+use mod_customcert\element\persistable_element_interface;
+use mod_customcert\element as base_element;
+use mod_customcert\element\element_interface;
+use mod_customcert\element\renderable_element_interface;
+use mod_customcert\element\form_buildable_interface;
+use mod_customcert\element\validatable_element_interface;
+use mod_customcert\element\preparable_form_interface;
+use mod_customcert\element_helper;
+use mod_customcert\service\element_renderer;
+use MoodleQuickForm;
+use pdf;
+use stdClass;
 
 /**
  * The customcert element face-to-face session date's core interaction API.
@@ -32,13 +44,21 @@ defined('MOODLE_INTERNAL') || die();
  * @package    customcertelement_facetofacedate
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class element extends \mod_customcert\element {
+class element extends base_element implements
+    constructable_element_interface,
+    element_interface,
+    form_buildable_interface,
+    persistable_element_interface,
+    preparable_form_interface,
+    renderable_element_interface,
+    validatable_element_interface
+{
     /**
      * This function renders the form elements when adding a customcert element.
      *
      * @param \MoodleQuickForm $mform the edit_form instance
      */
-    public function render_form_elements($mform) {
+    public function build_form(MoodleQuickForm $mform): void {
         global $COURSE, $DB;
 
         $sql = "SELECT ff.id, ff.name
@@ -65,23 +85,34 @@ class element extends \mod_customcert\element {
         );
         $mform->addHelpButton('dateformat', 'dateformat', 'customcertelement_facetofacedate');
 
-        parent::render_form_elements($mform);
+        element_helper::render_common_form_elements($mform, $this->showposxy);
+    }
+
+    /**
+     * Validate submitted form data for this element.
+     * Core validations are handled by validation_service; no extra rules here.
+     *
+     * @param array $data
+     * @return array<string,string>
+     */
+    public function validate(array $data): array {
+        return [];
     }
 
     /**
      * This will handle how form data will be saved into the data column in the
      * customcert_elements table.
      *
-     * @param \stdClass $data the form data
+     * @param stdClass $data the form data
      * @return string the json encoded array
      */
-    public function save_unique_data($data) {
+    public function normalise_data(stdClass $formdata): array {
         // Encode these variables before saving into the DB.
-        return json_encode([
-            'f2finstance' => $data->f2finstance,
-            'datefield' => $data->datefield,
-            'dateformat' => $data->dateformat,
-        ]);
+        return [
+            'f2finstance' => $formdata->f2finstance ?? '',
+            'datefield' => $formdata->datefield ?? '',
+            'dateformat' => $formdata->dateformat ?? '',
+        ];
     }
 
     /**
@@ -89,9 +120,15 @@ class element extends \mod_customcert\element {
      *
      * @param \pdf $pdf the pdf object
      * @param bool $preview true if it is a preview, false otherwise
-     * @param \stdClass $user the user we are rendering this for
+     * @param stdClass $user the user we are rendering this for
+     * @param element_renderer|null $renderer the renderer service
      */
-    public function render($pdf, $preview, $user) {
+    public function render(
+        pdf $pdf,
+        bool $preview,
+        stdClass $user,
+        ?element_renderer $renderer = null
+    ): void {
         global $DB;
 
         // If there is no element data, we have nothing to display.
@@ -167,10 +204,10 @@ class element extends \mod_customcert\element {
      *
      * @return string the html
      */
-    public function render_html() {
+    public function render_html(?element_renderer $renderer = null): string {
         // If there is no element data, we have nothing to display.
         if (empty($this->get_data())) {
-            return;
+            return '';
         }
 
         // Decode the information stored in the database.
@@ -185,22 +222,22 @@ class element extends \mod_customcert\element {
      *
      * @param \MoodleQuickForm $mform the edit_form instance
      */
-    public function definition_after_data($mform) {
+    public function prepare_form(MoodleQuickForm $mform): void {
         // Set the item and format for this element.
         if (!empty($this->get_data())) {
+            $payload = $this->get_payload();
+
             $dateinfo = json_decode($this->get_data());
 
             $element = $mform->getElement('f2finstance');
-            $element->setValue($dateinfo->f2finstance);
+            $element->setValue($payload['f2finstance']);
 
             $element = $mform->getElement('datefield');
-            $element->setValue($dateinfo->datefield);
+            $element->setValue($payload['datefield']);
 
             $element = $mform->getElement('dateformat');
-            $element->setValue($dateinfo->dateformat);
+            $element->setValue($payload['dateformat']);
         }
-
-        parent::definition_after_data($mform);
     }
 
     /**
@@ -339,7 +376,7 @@ class element extends \mod_customcert\element {
      * is only available if there is a Face-to-Face activity in this course.
      * @return true if element is available, false otherwise.
      */
-    public static function can_add() {
+    public static function can_add(): bool {
         global $COURSE, $DB;
 
         // Check if mod_facetoface plugin is installed.
@@ -354,5 +391,15 @@ class element extends \mod_customcert\element {
                   JOIN {course} c ON c.id = cm.course
                  WHERE m.name = 'facetoface' AND c.id = ?";
         return $DB->record_exists_sql($sql, [$COURSE->id]);
+    }
+
+    /**
+     * Build an element instance from a DB record.
+     *
+     * @param stdClass $record Raw DB row from customcert_elements.
+     * @return static
+     */
+    public static function from_record(stdClass $record): static {
+        return new static($record);
     }
 }
