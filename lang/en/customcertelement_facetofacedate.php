@@ -33,5 +33,5 @@ $string['numbersuffix_rd_as_in_third'] = 'rd';
 $string['numbersuffix_st_as_in_first'] = 'st';
 $string['pluginname'] = 'Face-to-face session date';
 $string['privacy:metadata'] = 'The Face-to-face session date plugin does not store any personal data.';
-$string['timestart'] = 'Start time';
 $string['timefinish'] = 'Finish time';
+$string['timestart'] = 'Start time';

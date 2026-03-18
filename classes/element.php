@@ -26,8 +26,6 @@ namespace customcertelement_facetofacedate;
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->dirroot . '/lib/grade/constants.php');
-
 /**
  * The customcert element face-to-face session date's core interaction API.
  *
@@ -35,38 +33,36 @@ require_once($CFG->dirroot . '/lib/grade/constants.php');
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class element extends \mod_customcert\element {
-
     /**
      * This function renders the form elements when adding a customcert element.
      *
      * @param \MoodleQuickForm $mform the edit_form instance
      */
     public function render_form_elements($mform) {
-        global $CFG, $COURSE, $DB;
-        $sessions = array();
+        global $COURSE, $DB;
+
         $sql = "SELECT ff.id, ff.name
                   FROM {course_modules} cm
                   JOIN {modules} m ON m.id = cm.module
                   JOIN {facetoface} ff ON ff.id = cm.instance
                   JOIN {course} c ON c.id = cm.course
                  WHERE m.name = 'facetoface' AND c.id = ?";
-        $params = array($COURSE->id);
-        $records = $DB->get_records_sql($sql, $params);
-        foreach ($records as $record) {
-            $sessions[$record->id] = $record->name;
-        }
+        $sessions = $DB->get_records_sql_menu($sql, [$COURSE->id]);
 
         $mform->addElement('select', 'f2finstance', get_string('f2finstance', 'customcertelement_facetofacedate'), $sessions);
         $mform->addHelpButton('f2finstance', 'f2finstance', 'customcertelement_facetofacedate');
 
-        $datefields = array();
         $datefields['timestart'] = get_string('timestart', 'customcertelement_facetofacedate');
         $datefields['timefinish'] = get_string('timefinish', 'customcertelement_facetofacedate');
         $mform->addElement('select', 'datefield', get_string('datefield', 'customcertelement_facetofacedate'), $datefields);
         $mform->addHelpButton('datefield', 'datefield', 'customcertelement_facetofacedate');
 
-
-        $mform->addElement('select', 'dateformat', get_string('dateformat', 'customcertelement_facetofacedate'), self::get_date_formats());
+        $mform->addElement(
+            'select',
+            'dateformat',
+            get_string('dateformat', 'customcertelement_facetofacedate'),
+            self::get_date_formats()
+        );
         $mform->addHelpButton('dateformat', 'dateformat', 'customcertelement_facetofacedate');
 
         parent::render_form_elements($mform);
@@ -80,15 +76,12 @@ class element extends \mod_customcert\element {
      * @return string the json encoded array
      */
     public function save_unique_data($data) {
-        // Array of data we will be storing in the database.
-        $arrtostore = array(
+        // Encode these variables before saving into the DB.
+        return json_encode([
             'f2finstance' => $data->f2finstance,
             'datefield' => $data->datefield,
-            'dateformat' => $data->dateformat
-        );
-
-        // Encode these variables before saving into the DB.
-        return json_encode($arrtostore);
+            'dateformat' => $data->dateformat,
+        ]);
     }
 
     /**
@@ -119,12 +112,16 @@ class element extends \mod_customcert\element {
             $date = time();
         } else {
             // Get the page.
-            $page = $DB->get_record('customcert_pages', array('id' => $this->get_pageid()), '*', MUST_EXIST);
+            $page = $DB->get_record('customcert_pages', ['id' => $this->get_pageid()], '*', MUST_EXIST);
             // Get the customcert this page belongs to.
-            $customcert = $DB->get_record('customcert', array('templateid' => $page->templateid), '*', MUST_EXIST);
+            $customcert = $DB->get_record('customcert', ['templateid' => $page->templateid], '*', MUST_EXIST);
             // Now we can get the issue for this user.
-            $issue = $DB->get_record('customcert_issues', array('userid' => $user->id, 'customcertid' => $customcert->id),
-                '*', IGNORE_MULTIPLE);
+            $issue = $DB->get_record(
+                'customcert_issues',
+                ['userid' => $user->id, 'customcertid' => $customcert->id],
+                '*',
+                IGNORE_MULTIPLE
+            );
 
             $date = '';
             // Face-to-face activity instance may have multiple sessions
@@ -144,12 +141,14 @@ class element extends \mod_customcert\element {
                   ORDER BY timefinish DESC
                      LIMIT 1";
 
-            // Only possible to get a date if fully attended
-            $params = array($f2finstance, $user->id,
-                            MDL_F2F_STATUS_FULLY_ATTENDED);
-            $record = $DB->get_record_sql($sql, $params);
+            // Only possible to get a date if fully attended.
+            $params = [
+                $f2finstance,
+                $user->id,
+                MDL_F2F_STATUS_FULLY_ATTENDED,
+            ];
 
-            if ($record) {
+            if ($record = $DB->get_record_sql($sql, $params)) {
                 $date = $record->$datefield;
             }
         }
@@ -218,7 +217,7 @@ class element extends \mod_customcert\element {
         $dateinfo = json_decode($this->get_data());
         if ($newitem = \restore_dbops::get_backup_ids_record($restore->get_restoreid(), 'course_module', $dateinfo->dateitem)) {
             $dateinfo->dateitem = $newitem->newitemid;
-            $DB->set_field('customcert_elements', 'data', $this->save_unique_data($dateinfo), array('id' => $this->get_id()));
+            $DB->set_field('customcert_elements', 'data', $this->save_unique_data($dateinfo), ['id' => $this->get_id()]);
         }
     }
 
@@ -236,7 +235,7 @@ class element extends \mod_customcert\element {
 
         $dateformats = [
             1 => userdate($date, '%B %d, %Y'),
-            2 => userdate($date, '%B %d' . $suffix . ', %Y')
+            2 => userdate($date, '%B %d' . $suffix . ', %Y'),
         ];
 
         $strdateformats = [
@@ -254,7 +253,7 @@ class element extends \mod_customcert\element {
             'strftimemonthyear',
             'strftimerecent',
             'strftimerecentfull',
-            'strftimetime'
+            'strftimetime',
         ];
 
         foreach ($strdateformats as $strdateformat) {
@@ -321,7 +320,7 @@ class element extends \mod_customcert\element {
      * @return string the suffix.
      */
     protected static function get_ordinal_number_suffix($day) {
-        if (!in_array(($day % 100), array(11, 12, 13))) {
+        if (!in_array(($day % 100), [11, 12, 13])) {
             switch ($day % 10) {
                 // Handle 1st, 2nd, 3rd.
                 case 1:
@@ -354,13 +353,6 @@ class element extends \mod_customcert\element {
                   JOIN {facetoface} ff ON ff.id = cm.instance
                   JOIN {course} c ON c.id = cm.course
                  WHERE m.name = 'facetoface' AND c.id = ?";
-        $params = array($COURSE->id);
-        $records = $DB->get_records_sql($sql, $params);
-
-        if (empty($records)) {
-            return false;
-        } else {
-            return true;
-        }
+        return $DB->record_exists_sql($sql, [$COURSE->id]);
     }
 }
